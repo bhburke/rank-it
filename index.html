@@ -1,0 +1,503 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+	"http://www.w3.org/TR/html4/loose.dtd">
+	
+<html lang="en">
+
+<head>
+
+	<meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+	<title>RankIt</title>
+	
+	<link rel="icon" type="image/ico" href="favicon.ico">
+	<link rel="stylesheet" type="text/css" href="style.css" />
+	<link rel="stylesheet" type="text/css" href="animation.css" />
+	<link href='http://fonts.googleapis.com/css?family=Oswald' rel='stylesheet' type='text/css'>
+	
+	<script type="text/javascript" src="jquery-1.7.js"></script>
+	<script type="text/javascript" src="jqBarGraph.1.1.min.js"></script>
+	
+	<script>
+		// Global Variables
+		var ideas = new Array(); // The entered ideas (as strings)
+		var factors = new Array(); // The entered factors (as strings)
+		var combos = new Array(); // All the combinations that have been ranked so far (as strings)
+		var scores = {}; // Each idea's score for each factor as scores['idea']['factor']
+		var weights = {}; // The weights asssigned to each factor as weights['factor']. Sum to 1
+		var choice1, choice2; // The current ideas being compared (as strings)
+		var criterium; // The current factor being compared (as a string)
+		var noFactors=true; // Should we do straight comparisons without any factors?
+		
+		$(document).ready(function() {
+			// Click handlers
+			
+   			$("#rankTheseIdeas").click(function() {
+   				// "Rank These Ideas" button on front page
+   				
+   				if ( ideas.length < 2 ) {
+   					alert("You must enter at least 2 ideas");
+   					return;
+   				}
+   				
+   				if ( noFactors ) {
+					$("#question").text("Which of these is better?");
+					factors.push("default");
+					weights["default"] = 1;
+				} else {
+					for ( f in factors ) {
+   						factor = factors[f];
+   						weights[factor] = getWeight(factor);
+   					}
+   					normalizeWeights();
+   				}
+ 			
+				for ( i in ideas ) {
+					var idea = ideas[i];
+					scores[idea]={};
+					for ( f in factors ) {
+						var factor = factors[f];
+						scores[idea][factor] = 500;
+					}
+				}
+				
+     			$("#inputPage").hide('slow');
+     			$("#rankPage").show('slow');
+     			displayNewIdeas();
+   			});
+   			
+   			$("#seeResults").click(function() {
+   				// "See Results" button on rank page
+     			$("#rankPage").hide('slow');
+     			$("#resultsPage").show('slow');
+     			displayResults();
+   			});
+   			
+   			$("#choice1").click(function() {
+   				// The choice on the left
+   				
+   				var winner = choice1;
+   				var loser = choice2;
+   				updateScores(winner, loser, criterium)
+   				displayNewIdeas();
+   			});
+   			
+   			$("#choice2").click(function() {
+   				// The choice on the right
+   				
+   				var winner = choice2;
+   				var loser = choice1;
+   				updateScores(winner, loser, criterium)
+   				displayNewIdeas();
+   			});
+   			
+   			$("#keepRanking").click(function() {
+   				// "Keep Ranking" button on results page
+   				
+				if ( combos.length == maxCombos() ) {
+					alert("There are no more decisions to make");
+					return;	
+				}
+				
+				displayNewIdeas();
+				
+				$("#resultsPage").hide('slow');
+				$("#rankPage").show('slow');
+
+			});
+		});
+		
+		function factorial(n) {
+			if(n==0)
+				return 1;
+			else
+				return n*factorial(n-1);	
+		}
+
+		function choose(a,b) {
+			// The number of was to choose a items from b items
+			return factorial(a)/(factorial(b)*factorial(a-b));	
+		}
+
+		function maxCombos() {
+			// The maximum number of combinations a player can rank
+			return choose(ideas.length, 2)*factors.length;	
+		}
+	
+		function addIdea() {
+			// Grab the text from the form and add it the list of ideas
+			
+			var form = document.forms["ideaInput"];
+			var textBox = form["idea"];
+			
+			var idea = textBox.value;
+			textBox.value = "";
+			
+			// Check if idea is empty or a repeat
+			if (idea == "") return false;
+			for (var i=0; i<ideas.length; i++)
+				if (ideas[i] == idea)
+					return false;
+			
+			// Store idea
+			ideas.push(idea);
+						
+			// Create new bullet
+			var list = document.getElementById("ideaList");
+			var bullet = document.createElement("li");
+				bullet.appendChild(document.createTextNode(idea));
+			list.insertBefore(bullet, list.firstChild);
+			
+			return false; // Stop form from being submitted
+		}
+		
+		function addFactor() {
+			// Grab the text from the form and add it to the list of factors
+
+			var form = document.forms["factorInput"];
+			var textBox = form["factor"];
+			
+			var factor = textBox.value;
+			textBox.value = "";
+			
+			if (factor == "") return false;
+			for (var i=0; i<factors.length; i++) if (factors[i] == factor)
+				return false;
+			
+			// Store factor
+			factors.push(factor);
+			noFactors=false;
+			
+			// Create new bullet and slider
+			var list = document.getElementById("factorList");
+			var bullet = document.createElement("li");
+				bullet.appendChild(document.createTextNode(factor));
+			var slider= document.createElement("input");
+				slider.setAttribute("type", "range");
+				slider.setAttribute("min", "0");
+				slider.setAttribute("max", "50");
+				slider.setAttribute("step", "1");
+				slider.setAttribute("value", "25")
+				slider.setAttribute("class", "slider");
+				slider.setAttribute("id", factor+"_weight");
+			bullet.appendChild(slider);
+			list.insertBefore(bullet, list.firstChild);
+			
+			// Make question and sliders visible
+			if (factors.length == 2) {
+				$("#importance_question").show('slow');
+				$(".slider").show('slow');
+			}
+			if (factors.length > 2)
+				slider.style.display = "block";
+
+			return false; // Stop form from being submitted
+		}
+ 		
+ 		function comboHasBeenDone() {
+ 			// Has the current combination of choices and factor already been compared?
+			
+			for ( c in combos ) {
+				if ( combos[c] == choice1+"."+choice2+"."+criterium ||
+					combos[c] == choice2+"."+choice1+"."+criterium ) {
+					return true;
+					}
+			}
+
+			return false;
+		}
+ 		
+ 		function displayNewIdeas() {
+ 			// Pick and display a new combination to compare
+ 			// If all combinations have been compared, go to results page
+ 			
+ 			// Check if all combinations have been compared
+ 			if ( combos.length == maxCombos() ) {
+ 				displayResults();
+				$("#rankPage").hide('slow');
+     			$("#resultsPage").show('slow');
+				return;
+			}
+			
+			// Pick a random new combination
+			do {
+				var i = Math.floor(Math.random()*ideas.length);
+				var j = i;
+				while (j == i) j = Math.floor(Math.random()*ideas.length);
+				var k = Math.floor(Math.random()*factors.length);
+
+				choice1 = ideas[i];
+				choice2 = ideas[j];
+				criterium = factors[k];
+
+			} while ( comboHasBeenDone() );
+			
+			// Record the combination we picked
+			combos.push( choice1+"."+choice2+"."+criterium );
+ 			
+ 			// Update screen
+ 			$("#choices").hide('fast'); 			
+ 			$("#choice1 a").text(choice1);
+ 			$("#choice2 a").text(choice2);
+ 			$("#criterium").text(criterium+"?");
+ 			$("#choices").show('fast');
+ 		}
+ 		
+ 		function getTotalScore(idea) {
+ 			// Add up the idea's weighted scores for each factor
+
+			var sum=0;
+
+			for ( f in factors ) {
+				var factor = factors[f];
+				sum += scores[idea][factor] * weights[factor];
+			}
+
+			return sum;	
+
+		}
+		
+		function getWeight(factor) {
+			// Extract the value from the slider input for the given factor
+
+			var slider = document.getElementById(factor+"_weight");
+			return slider.value;
+
+		}
+		
+
+		function normalizeWeights() {
+			// Divide weights so their sum is 1
+
+			var sum = 0.0;
+
+			for(f in factors){
+				var factor = factors[f];
+				sum = parseFloat(sum) + parseFloat(weights[factor]);
+			}
+
+			for(f in factors){
+				var factor = factors[f];
+				weights[factor] = 1.0 * weights[factor] / sum;
+			}
+
+		}
+		
+
+		function updateScores(winner, loser, factor) {
+			// Take points from loser and give to winner for factor
+			
+			var points = scores[loser][factor]*0.25;
+			
+			scores[winner][factor] += points;
+			scores[loser][factor] -= points;	
+
+		}
+ 		
+ 		function displayResults() {
+ 			// Construct and display the results page
+ 		
+ 			// Empty current list
+ 			var list = document.getElementById("rankedList");
+ 			if ( list.hasChildNodes() ) {
+ 				while ( list.childNodes.length >= 1 ) {
+ 					list.removeChild( list.firstChild );
+ 				}
+ 			}
+ 			
+ 			// Fill in each item into sorted list
+ 			for (var i=0; i<ideas.length; i++) {
+ 				var idea = ideas[i];
+ 				var score = getTotalScore(idea);
+ 				var bullet = document.createElement("li");
+				bullet.appendChild(document.createTextNode(idea));
+				bullet.setAttribute("score", score);
+				
+				if (!list.hasChildNodes()) {
+					list.appendChild(bullet);
+				} else {
+					var inserted = false;
+					var child = list.firstChild;
+					while (child) {
+						if ( child.getAttribute("score") < score ) {
+							list.insertBefore(bullet, child);
+							inserted = true;
+							break;
+						}
+						child = child.nextSibling;
+					}
+					if (!inserted) list.appendChild(bullet);
+				}
+ 			}
+ 			
+ 			displayGraph();
+ 		}
+ 		
+ 		function displayGraph(animate) {
+ 			// Draw the graph summary of the results
+
+ 			animate = (typeof animate == 'undefined') ? true : animate;
+ 			if(animate) {
+ 				console.log("animate is true");
+ 			} else {
+ 				console.log("animate is false");
+ 			}
+ 			
+ 			// Empty current graph
+ 			var graph = document.getElementById("graph");
+ 			if ( graph.hasChildNodes() ) {
+ 				while ( graph.childNodes.length >= 1 ) {
+ 					graph.removeChild( graph.firstChild );
+ 				}
+ 			}
+ 			
+ 			// Construct dataset
+ 			dataset = new Array();
+ 			for ( i in ideas ) {
+ 				var idea = ideas[i];
+ 				var entry = new Array();
+ 				var factorScores = new Array();
+ 				for (f in factors) {
+ 					var factor = factors[f];
+ 					factorScores.push(Math.floor(scores[idea][factor]*weights[factor]));
+ 				}
+ 				entry.push(factorScores);
+ 				entry.push(idea);
+ 				dataset.push(entry);
+ 			}
+ 			
+ 			// Construct colors array
+ 			var colors = new Array();
+ 			for (f in factors) {
+ 				switch (f%6) {
+ 					case (0):
+ 						colors.push('#6699FF');
+ 						break;
+ 					case (1):
+ 						colors.push('#003471');
+ 						break;
+ 					case (2):
+ 						colors.push('#ED1C24');
+ 						break;
+ 					case (3):
+ 						colors.push('#39B54A');
+ 						break;
+ 					case (4):
+ 						colors.push('#E1E1E1');
+ 						break;
+ 					default:
+ 						colors.push('#FF6633');
+ 						break;
+ 				}
+ 			}
+ 			
+ 			if(noFactors){
+ 				// Plain graph
+				$("#graph").jqBarGraph({
+ 					data: dataset,
+ 					colors: colors,
+ 					width: 700,
+ 					showValues: false,
+ 			 	});
+			} else {
+				// Stacked graph
+ 				$("#graph").jqBarGraph({
+ 					data: dataset,
+ 					colors: colors,
+ 					legends: factors,
+ 					legend: true,
+ 					width: 700,
+ 					showValues: false,
+ 					animate: animate,
+ 			 	});
+			}
+ 		}
+ 		
+	</script>
+
+</head>
+
+
+<body>
+
+<div id="wrapper">
+
+<div id="header">
+
+	<div id="logo">
+	<a href="index.html"><img src="logo.png"></a>
+	</div>
+	
+	<div id="slogan">
+	<b>organize<br> and decide</b>
+	</div>
+	
+</div>
+
+<div id="break">
+	<hr>
+</div>
+</div>
+
+<div id="wrapper2">
+
+<div id="inputPage">
+	<div id="instructions">
+		RankIt is a simple visual tool to help you decide between a list of items based on different factors. Enter the items on the left and factors on the right. Press Enter to add an item/factor.
+	</div>
+
+	<div id="ideaInput">
+		What are you trying to decide between?
+		<form name="ideaInput" onSubmit="return addIdea()">
+			<input type="text" name="idea" id="idea"></input>
+		</form>
+	
+		<ul id="ideaList"></ul>
+	</div>
+
+	<div id="factorInput">
+		Based on what factors?
+		<form name="factorInput" onSubmit="return addFactor()">
+			<input type="text" name="idea" id="factor"></input>
+		</form>
+	
+		<div id="importance_question">How important are they to you?</div>
+		<ul id="factorList"></ul>
+	
+	</div>
+
+<div class="button">
+	<input type="button" value="Rank!" id="rankTheseIdeas">
+</div>
+
+</div>
+
+<div id="rankPage">
+	<h1 id="question">Which of these is better in terms of <div id="criterium">dolphins?</div></h1>
+	<div id="choices">
+		<div id="choice1"><a href="#">Choice 1</a></div>
+		<div id="choice2"><a href="#">Choice 2</a></div>
+	</div>
+	<div class="button">
+		<input type="button" value="Done" id="seeResults">
+	</div>
+</div>
+
+<div id="resultsPage">
+	<h1 id="question">We think you should choose:</h1>
+	<ol id="rankedList"></ol>
+	<div id="graph"></div>
+	<div class="smallButton">
+		<input type="button" value="Keep Ranking" id="keepRanking">
+	</div>
+</div>
+
+</div>
+
+<div id="about">
+<a href="about.html">About</a>
+</div>
+
+</body>
+
+
+</html>
