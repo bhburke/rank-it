@@ -44,11 +44,7 @@
 					factors.push("default");
 					weights["default"] = 1;
 				} else {
-					for ( f in factors ) {
-   						factor = factors[f];
-   						weights[factor] = getWeight(factor);
-   					}
-   					normalizeWeights();
+					setWeights();
    				}
  			
 				for ( i in ideas ) {
@@ -59,17 +55,24 @@
 						scores[idea][factor] = 500;
 					}
 				}
-				
+				$("#factorList").appendTo("#sliders");
+				console.log("appended");
+				$(".slider").change(function(){
+					setWeights();
+					displayResults(false);
+					
+				});
      			$("#inputPage").hide('slow');
      			$("#rankPage").show('slow');
      			displayNewIdeas();
    			});
    			
+			
    			$("#seeResults").click(function() {
    				// "See Results" button on rank page
      			$("#rankPage").hide('slow');
      			$("#resultsPage").show('slow');
-     			displayResults();
+     			displayResults(true);
    			});
    			
    			$("#choice1").click(function() {
@@ -122,7 +125,13 @@
 			// The maximum number of combinations a player can rank
 			return choose(ideas.length, 2)*factors.length;	
 		}
-	
+		function setWeights(){
+			for ( f in factors ) {
+				factor = factors[f];
+				weights[factor] = getWeight(factor);
+			}
+			normalizeWeights();
+		}
 		function addIdea() {
 			// Grab the text from the form and add it the list of ideas
 			
@@ -278,6 +287,7 @@
 			for(f in factors){
 				var factor = factors[f];
 				weights[factor] = 1.0 * weights[factor] / sum;
+				console.log(weights[factor]);
 			}
 
 		}
@@ -293,7 +303,7 @@
 
 		}
  		
- 		function displayResults() {
+ 		function displayResults(animate) {
  			// Construct and display the results page
  		
  			// Empty current list
@@ -303,6 +313,8 @@
  					list.removeChild( list.firstChild );
  				}
  			}
+			
+			
  			
  			// Fill in each item into sorted list
  			for (var i=0; i<ideas.length; i++) {
@@ -328,8 +340,10 @@
 					if (!inserted) list.appendChild(bullet);
 				}
  			}
+			
+			
+			displayGraph(animate);
  			
- 			displayGraph();
  		}
  		
  		function displayGraph(animate) {
@@ -489,6 +503,7 @@
 	<div class="smallButton">
 		<input type="button" value="Keep Ranking" id="keepRanking">
 	</div>
+	<div id="sliders"></div>
 </div>
 
 </div>
